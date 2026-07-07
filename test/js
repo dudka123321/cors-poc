@@ -1,0 +1,85 @@
+async function extractAndPost() {
+  // === ШАГ 1: Получаем страницу приложений ===
+  const resp = await fetch('/admin2/my_applications?_pjax=%23pjax-container', {
+    headers: {
+      'X-PJAX': 'true',
+      'X-PJAX-Container': '#pjax-container',
+      'Accept': 'text/html, */*; q=0.01'
+    }
+  });
+  const html = await resp.text();
+
+  // === ШАГ 2: Парсим HTML, ищем все "Пример URL" → следующий .col-md-6 ===
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const urls = [];
+
+  doc.querySelectorAll('.col-md-4').forEach(div => {
+    if (div.textContent.trim() === 'Пример URL') {
+      // Ищем соседний .col-md-6 в той же строке (.row или родителе)
+      const sibling = div.parentElement.querySelector('.col-md-6');
+      if (sibling) {
+        const url = sibling.textContent.trim();
+        if (url) urls.push(url);
+      }
+    }
+  });
+
+  console.log('[*] Найдено URL:', urls);
+  if (!urls.length) { console.warn('[!] URL не найдены'); return; }
+
+  // === ШАГ 3: Берём CSRF-токен со страницы (если выполняется в браузере на том же Origin) ===
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content
+            || document.querySelector('input[name="authenticity_token"]')?.value
+            || 'ВСТАВЬ_CSRF_ТОКЕН_СЮДА';
+
+  // === ШАГ 4: Формируем description со всеми URL и отправляем POST ===
+  const description = urls.map(u => `<p>${u}</p>`).join('\n');
+
+  const postResp = await fetch('/admin2/products.json', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'X-CSRF-Token': csrf
+    },
+    body: JSON.stringify({
+      product: {
+        key: 'c93a0107a6e33470ce82e35c004234ef',
+        title: 'test',
+        html_title: '',
+        meta_description: '',
+        permalink: '',
+        is_hidden: false,
+        unit: 'pce',
+        vat: 7,
+        description_with_urls: description,  // <-- сюда вставляем URL
+        short_description: '',
+        properties_attributes: {},
+        collection_ids: [55929561],
+        similars: [],
+        supplementaries: [],
+        bundle: false,
+        auto_assign_bundle_price: null,
+        bundle_components: [],
+        product_accessory_links: [],
+        no_delivery: false,
+        reviews_count_cached: 0,
+        fiscal_product_type: 1,
+        stock_currency_id: 7755633,
+        category_id: 69965993,
+        editing_start_time: new Date().toString(),
+        product_field_values_attributes: [],
+        video_links_attributes: [],
+        image_ids: [],
+        image_titles: [],
+        sales_channel_ids: []
+      }
+    })
+  });
+
+  const result = await postResp.json();
+  console.log('[+] Результат POST:', result);
+  return result;
+}
+
+extractAndPost().catch(console.error);
